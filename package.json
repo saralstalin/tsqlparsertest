@@ -1,0 +1,20 @@
+{
+    "name": "@saralsql/tsql-parser",
+    "version": "0.1.1",
+    "description": "High-fidelity T-SQL parser for LSP tooling",
+    "main": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "files": [
+        "dist"
+    ],
+    "type": "commonjs",
+    "scripts": {
+        "build": "tsc",
+        "prepublishOnly": "npm run build",
+        "start": "node index.js"
+    },
+    "dependencies": {
+        "@saralsql/tsql-parser": "^0.1.2",
+        "express": "^5.2.1"
+    }
+}

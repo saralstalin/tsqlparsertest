@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>SaralSQL Parser Playground</title>
+
+  <style>
+    body {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      height: 100vh;
+      font-family: system-ui;
+    }
+
+    textarea {
+      width: 100%;
+      height: 100%;
+      border: 0;
+      padding: 20px;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+      box-sizing: border-box;
+      resize: none;
+      outline: none;
+      line-height: 1.5;
+    }
+
+    #output {
+      margin: 0;
+      padding: 20px;
+      background: #111;
+      color: #ddd;
+      overflow: auto;
+      white-space: pre-wrap;
+      word-break: break-word;
+      line-height: 1.45;
+      font-family: Consolas, monospace;
+      font-size: 14px;
+    }
+
+    .toolbar {
+      position: fixed;
+      top: 15px;
+      right: 15px;
+      display: flex;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    button {
+      padding: 10px 18px;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      color: white;
+      font-weight: 600;
+      transition: all 0.2s ease;
+    }
+
+    .parse-btn { background: #2563eb; }
+    .copy-btn { background: #16a34a; }
+
+    .copy-btn.copied {
+      background: #15803d;
+      transform: scale(1.05);
+    }
+
+    /* JSON colors */
+    .key { color: #93c5fd; }
+    .string { color: #86efac; }
+    .number { color: #fca5a5; }
+    .boolean { color: #f9a8d4; }
+    .null { color: #c4b5fd; }
+    .punctuation {
+      color: #f8fafc;
+      font-weight: 600;
+    }
+  </style>
+</head>
+
+<body>
+  <textarea id="sql">DECLARE @Id INT;
+SET @Id = 10;
+
+SELECT *
+FROM Users
+WHERE Id = @Id;</textarea>
+
+  <pre id="output"></pre>
+
+  <div class="toolbar">
+    <button class="parse-btn" onclick="run()">Parse</button>
+    <button id="copyBtn" class="copy-btn" onclick="copyOutput()">Copy</button>
+  </div>
+
+  <script>
+    let latestOutput = "";
+
+    function syntaxHighlight(json) {
+      json = json
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+      json = json.replace(
+        /("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g,
+        match => {
+          let cls = "number";
+
+          if (/^"/.test(match)) {
+            cls = /:$/.test(match) ? "key" : "string";
+          } else if (/true|false/.test(match)) {
+            cls = "boolean";
+          } else if (/null/.test(match)) {
+            cls = "null";
+          }
+
+          return `<span class="${cls}">${match}</span>`;
+        }
+      );
+
+      json = json.replace(
+        /([{}\[\],:])/g,
+        '<span class="punctuation">$1</span>'
+      );
+
+      return json;
+    }
+
+    async function run() {
+      const sql = document.getElementById("sql").value;
+
+      const res = await fetch("/parse", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ sql })
+      });
+
+      const data = await res.json();
+
+      latestOutput = JSON.stringify(data, null, 2);
+
+      document.getElementById("output").innerHTML =
+        syntaxHighlight(latestOutput);
+    }
+
+    async function copyOutput() {
+      if (!latestOutput) return;
+
+      const btn = document.getElementById("copyBtn");
+
+      await navigator.clipboard.writeText(latestOutput);
+
+      btn.textContent = "✓ Copied";
+      btn.classList.add("copied");
+
+      setTimeout(() => {
+        btn.textContent = "Copy";
+        btn.classList.remove("copied");
+      }, 1500);
+    }
+
+    run();
+  </script>
+</body>
+</html>
