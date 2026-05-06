@@ -32,11 +32,41 @@
       background: #111;
       color: #ddd;
       overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
       line-height: 1.45;
       font-family: Consolas, monospace;
       font-size: 14px;
+      display: grid;
+      gap: 16px;
+      box-sizing: border-box;
+    }
+
+    .section {
+      padding: 16px;
+      border-radius: 18px;
+      background: #0f172a;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+    }
+
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 16px;
+      color: #e2e8f0;
+      letter-spacing: 0.02em;
+    }
+
+    .section pre {
+      margin: 0;
+      padding: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+      line-height: 1.5;
+      overflow: auto;
+      max-height: 360px;
+    }
+
+    .section.empty {
+      color: #94a3b8;
     }
 
     .toolbar {
@@ -87,15 +117,61 @@ SELECT *
 FROM Users
 WHERE Id = @Id;</textarea>
 
-  <pre id="output"></pre>
+  <div id="output">
+    <div class="section" id="section-success">
+      <h2>Result</h2>
+      <pre id="result"></pre>
+      <div id="timing" style="margin-top: 8px; font-size: 12px; color: #94a3b8;"></div>
+    </div>
+    <div class="section" id="section-ast">
+      <h2>AST</h2>
+      <pre id="ast"></pre>
+    </div>
+    <div class="section" id="section-issues">
+      <h2>Parser Issues</h2>
+      <pre id="issues"></pre>
+    </div>
+    <div class="section" id="section-semantic">
+      <h2>Semantic Diagnostics</h2>
+      <pre id="semanticDiagnostics"></pre>
+    </div>
+    <div class="section" id="section-diagnostics">
+      <h2>Combined Diagnostics</h2>
+      <pre id="diagnostics"></pre>
+    </div>
+    <div class="section" id="section-scope">
+      <h2>Scope Root</h2>
+      <pre id="scopeRoot"></pre>
+    </div>
+    <div class="section" id="section-lineage">
+      <h2>Lineage Edges</h2>
+      <pre id="lineageEdges"></pre>
+    </div>
+    <div class="section" id="section-columns">
+      <h2>Column Resolutions</h2>
+      <pre id="columnsResolutions"></pre>
+    </div>
+    <div class="section" id="section-raw">
+      <h2>Raw Response</h2>
+      <pre id="rawOutput"></pre>
+    </div>
+  </div>
 
   <div class="toolbar">
-    <button class="parse-btn" onclick="run()">Parse</button>
+    <button class="parse-btn" id="parseBtn">Parse</button>
     <button id="copyBtn" class="copy-btn" onclick="copyOutput()">Copy</button>
   </div>
 
   <script>
     let latestOutput = "";
+    let debounceTimer;
+
+    function debounce(func, delay) {
+      return function(...args) {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => func.apply(this, args), delay);
+      };
+    }
 
     function syntaxHighlight(json) {
       json = json
@@ -128,23 +204,89 @@ WHERE Id = @Id;</textarea>
       return json;
     }
 
+    function renderJson(elementId, value) {
+      const pre = document.getElementById(elementId);
+      if (value === undefined || value === null || (Array.isArray(value) && value.length === 0) || (typeof value === 'object' && Object.keys(value).length === 0)) {
+        pre.textContent = "(empty)";
+        pre.classList.add("empty");
+        return;
+      }
+
+      pre.classList.remove("empty");
+      pre.innerHTML = syntaxHighlight(JSON.stringify(value, null, 2));
+    }
+
     async function run() {
+      console.log('run() called');
+      const startTime = performance.now();
+
       const sql = document.getElementById("sql").value;
+      console.log('SQL:', sql);
 
-      const res = await fetch("/parse", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ sql })
-      });
+      try {
+        console.log('Fetching /parse');
+        const res = await fetch("/parse", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ sql })
+        });
 
-      const data = await res.json();
+        console.log('Response status:', res.status);
+        const data = await res.json();
+        console.log('Data received:', data);
+        const endTime = performance.now();
+        const timeTaken = (endTime - startTime).toFixed(2) + " ms";
 
-      latestOutput = JSON.stringify(data, null, 2);
+        latestOutput = JSON.stringify(data, null, 2);
 
-      document.getElementById("output").innerHTML =
-        syntaxHighlight(latestOutput);
+        renderJson("result", {
+          success: data.success,
+          error: data.error || null
+        });
+
+        document.getElementById("timing").textContent = `Parsed in ${timeTaken}`;
+
+        document.getElementById("rawOutput").textContent = latestOutput;
+
+        if (data.success) {
+          renderJson("ast", data.ast);
+          renderJson("issues", data.issues);
+          renderJson("semanticDiagnostics", data.semanticDiagnostics);
+          renderJson("diagnostics", data.diagnostics);
+          renderJson("scopeRoot", data.scope?.root);
+          renderJson("lineageEdges", data.lineage?.edges);
+          renderJson("columnsResolutions", data.columns?.resolutions);
+        } else {
+          renderJson("ast", null);
+          renderJson("issues", null);
+          renderJson("semanticDiagnostics", null);
+          renderJson("diagnostics", null);
+          renderJson("scopeRoot", null);
+          renderJson("lineageEdges", null);
+          renderJson("columnsResolutions", null);
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        const endTime = performance.now();
+        const timeTaken = (endTime - startTime).toFixed(2) + " ms";
+
+        latestOutput = String(err);
+        document.getElementById("rawOutput").textContent = latestOutput;
+        renderJson("result", {
+          success: false,
+          error: String(err)
+        });
+        document.getElementById("timing").textContent = `Error in ${timeTaken}`;
+        renderJson("ast", null);
+        renderJson("issues", null);
+        renderJson("semanticDiagnostics", null);
+        renderJson("diagnostics", null);
+        renderJson("scopeRoot", null);
+        renderJson("lineageEdges", null);
+        renderJson("columnsResolutions", null);
+      }
     }
 
     async function copyOutput() {
@@ -164,6 +306,19 @@ WHERE Id = @Id;</textarea>
     }
 
     run();
+
+    // Add real-time parsing on keyup with 300ms debounce
+    const debouncedRun = debounce(run, 300);
+    document.getElementById("sql").addEventListener("keyup", () => {
+      console.log('Keyup event triggered');
+      debouncedRun();
+    });
+
+    // Add click listener for the parse button
+    document.getElementById("parseBtn").addEventListener("click", () => {
+      console.log('Parse button clicked');
+      run();
+    });
   </script>
 </body>
 </html>

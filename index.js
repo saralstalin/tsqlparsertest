@@ -1,45 +1,86 @@
 const express = require("express");
-const {
-  Lexer,
-  Parser,
-  ScopeBuilder,
-  diagnose
-} = require("@saralsql/tsql-parser");
+const { analyze } = require("@saralsql/tsql-parser");
 
-const expressApp = require("express");
-const app = expressApp();
+const app = express();
 
-app.use(expressApp.json());
-app.use(expressApp.static("public"));
+app.use(express.json());
+app.use(express.static("public"));
+
+function safeJson(value) {
+  const seen = new WeakSet();
+  return JSON.parse(JSON.stringify(value, (key, val) => {
+    if (val && typeof val === "object") {
+      if (seen.has(val)) {
+        return "[Circular]";
+      }
+      seen.add(val);
+    }
+
+    if (["parent", "_parent", "node"].includes(key)) {
+      return undefined;
+    }
+
+    return val;
+  }));
+}
 
 app.post("/parse", (req, res) => {
   try {
     const sql = req.body.sql || "";
 
-    const parser = new Parser(new Lexer(sql));
-    const parseResult = parser.parse();   // raw result
-    const ast = parseResult.ast;
+    // Analyze using the new public API
+    const result = analyze(sql);
 
-    const scope = new ScopeBuilder().build(ast);
-    const diagnostics = diagnose(ast, scope);
+    // Log sections separately
+    console.log("\n=== AST ===");
+    console.log(result.ast);
 
-    res.json({
+    console.log("\n=== Parser Issues ===");
+    console.log(result.issues);
+
+    console.log("\n=== Semantic Diagnostics ===");
+    console.log(result.semanticDiagnostics);
+
+    console.log("\n=== Combined Diagnostics ===");
+    console.log(result.diagnostics);
+
+    console.log("\n=== Scope Root ===");
+    console.log(result.scope.root);
+
+    console.log("\n=== Lineage Edges ===");
+    console.log(result.lineage.edges);
+
+    console.log("\n=== Column Resolutions ===");
+    console.log(result.columns.resolutions);
+
+    const responseBody = {
       success: true,
-      parseResult,     // raw parser output
-      diagnostics,
+      ast: safeJson(result.ast),
+      issues: safeJson(result.issues),
+      semanticDiagnostics: safeJson(result.semanticDiagnostics),
+      diagnostics: safeJson(result.diagnostics),
       scope: {
-        undeclared: scope.undeclared,
-        duplicates: scope.duplicates
+        root: safeJson(result.scope.root)
+      },
+      lineage: {
+        edges: safeJson(result.lineage.edges)
+      },
+      columns: {
+        resolutions: safeJson(result.columns.resolutions)
       }
-    });
+    };
+
+    res.json(responseBody);
+
   } catch (err) {
     res.json({
       success: false,
-      error: err.message
+      error: err instanceof Error ? err.message : String(err)
     });
   }
 });
 
-app.listen(3000, () => {
-  console.log("http://localhost:3000");
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+  console.log(`http://localhost:${port}`);
 });

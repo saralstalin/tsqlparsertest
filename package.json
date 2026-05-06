@@ -14,7 +14,7 @@
         "start": "node index.js"
     },
     "dependencies": {
-        "@saralsql/tsql-parser": "^0.1.2",
+        "@saralsql/tsql-parser": "^0.1.12",
         "express": "^5.2.1"
     }
 }
